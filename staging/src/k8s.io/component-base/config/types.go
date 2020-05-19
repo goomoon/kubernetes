@@ -39,10 +39,12 @@ type ClientConnectionConfiguration struct {
 // LeaderElectionConfiguration defines the configuration of leader election
 // clients for components that can run with leader election enabled.
 type LeaderElectionConfiguration struct {
+	// 是否开启选举功能
 	// leaderElect enables a leader election client to gain leadership
 	// before executing the main loop. Enable this when running replicated
 	// components for high availability.
 	LeaderElect bool
+	// 锁的失效时间，类似于 session-timeout
 	// leaseDuration is the duration that non-leader candidates will wait
 	// after observing a leadership renewal until attempting to acquire
 	// leadership of a led but unrenewed leader slot. This is effectively the
@@ -50,21 +52,29 @@ type LeaderElectionConfiguration struct {
 	// by another candidate. This is only applicable if leader election is
 	// enabled.
 	LeaseDuration metav1.Duration
+
+	// leader 的心跳间隔，必须小于等于 lease-duration
 	// renewDeadline is the interval between attempts by the acting master to
 	// renew a leadership slot before it stops leading. This must be less
 	// than or equal to the lease duration. This is only applicable if leader
 	// election is enabled.
 	RenewDeadline metav1.Duration
+
+	// non-leader 每隔 retry-period 尝试获取锁
 	// retryPeriod is the duration the clients should wait between attempting
 	// acquisition and renewal of a leadership. This is only applicable if
 	// leader election is enabled.
 	RetryPeriod metav1.Duration
+	// 表示哪个资源对象会被作为锁
 	// resourceLock indicates the resource object type that will be used to lock
 	// during leader election cycles.
 	ResourceLock string
+	// 作为锁的资源名，也就是用哪个资源名作为锁
 	// resourceName indicates the name of resource object that will be used to lock
 	// during leader election cycles.
 	ResourceName string
+
+	// 哪个namespace下面存放锁
 	// resourceName indicates the namespace of resource object that will be used to lock
 	// during leader election cycles.
 	ResourceNamespace string

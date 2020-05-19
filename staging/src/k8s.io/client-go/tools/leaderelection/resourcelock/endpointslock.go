@@ -27,13 +27,18 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
+// 代表一个锁对象
 type EndpointsLock struct {
+	// 表示锁对应的resource对象元数据信息
 	// EndpointsMeta should contain a Name and a Namespace of an
 	// Endpoints object that the LeaderElector will attempt to lead.
 	EndpointsMeta metav1.ObjectMeta
-	Client        corev1client.EndpointsGetter
-	LockConfig    ResourceLockConfig
-	e             *v1.Endpoints
+	// Endpoint操作终端
+	Client corev1client.EndpointsGetter
+	//当前锁竞争者的配置
+	LockConfig ResourceLockConfig
+	// 当前锁对象，其实个Endpoint对象
+	e *v1.Endpoints
 }
 
 // Get returns the election record from a Endpoints Annotation
@@ -100,12 +105,14 @@ func (el *EndpointsLock) RecordEvent(s string) {
 	el.LockConfig.EventRecorder.Eventf(&v1.Endpoints{ObjectMeta: el.e.ObjectMeta}, v1.EventTypeNormal, "LeaderElection", events)
 }
 
+// 当前资源锁标识
 // Describe is used to convert details on current resource lock
 // into a string
 func (el *EndpointsLock) Describe() string {
 	return fmt.Sprintf("%v/%v", el.EndpointsMeta.Namespace, el.EndpointsMeta.Name)
 }
 
+// 当前锁竞争者的身份表示
 // Identity returns the Identity of the lock
 func (el *EndpointsLock) Identity() string {
 	return el.LockConfig.Identity

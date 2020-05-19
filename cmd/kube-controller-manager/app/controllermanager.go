@@ -193,6 +193,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 	}
 
+	// 内嵌的真正的Run函数
 	run := func(ctx context.Context) {
 		rootClientBuilder := controller.SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
@@ -242,25 +243,41 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		select {}
 	}
 
+	/**
+	controller-manager 及 scheduler 中与 leader election 相关的启动参数有以下四个：
+	leader-elect: 是否开启选举功能
+	leader-elect-lease-duration: 锁的失效时间，类似于 session-timeout
+	leader-elect-renew-deadline: leader 的心跳间隔，必须小于等于 lease-duration
+	leader-elect-retry-period: non-leader 每隔 retry-period 尝试获取锁
+	*/
+	// 查看是否做选主操作(对应启动参数--leader-elect=true)，如果不需要选主操作，则直接启动调用run()函数
 	if !c.ComponentConfig.Generic.LeaderElection.LeaderElect {
 		run(context.TODO())
 		panic("unreachable")
 	}
 
+	// 获取主机名
 	id, err := os.Hostname()
 	if err != nil {
 		return err
 	}
 
+	// 主机名 + UUID 作为选主标志
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id = id + "_" + string(uuid.NewUUID())
 
+	// 初始化资源锁，这个锁已经包括当前竞争者身份
 	rl, err := resourcelock.New(c.ComponentConfig.Generic.LeaderElection.ResourceLock,
+		// 该资源所在 Namespace，在此为"kube-system"
 		c.ComponentConfig.Generic.LeaderElection.ResourceNamespace,
+		// 资源名称，在此为"kube-controller-manager"
 		c.ComponentConfig.Generic.LeaderElection.ResourceName,
+		// coreClient接口
 		c.LeaderElectionClient.CoreV1(),
 		c.LeaderElectionClient.CoordinationV1(),
+		// 缩配置，包括持有者标识
 		resourcelock.ResourceLockConfig{
+			// 锁持有者标志
 			Identity:      id,
 			EventRecorder: c.EventRecorder,
 		})
@@ -268,20 +285,27 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		klog.Fatalf("error creating lock: %v", err)
 	}
 
-	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
-		Lock:          rl,
-		LeaseDuration: c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline: c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:   c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: run,
-			OnStoppedLeading: func() {
-				klog.Fatalf("leaderelection lost")
+	//
+	leaderelection.RunOrDie(context.TODO(),
+		// 选举配置，会基于该配置产生选主过程
+		leaderelection.LeaderElectionConfig{
+			Lock: rl,
+			// 下面 3 个参数是一些重时间，租赁期间等的设置，不是很重要
+			LeaseDuration: c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
+			RenewDeadline: c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
+			RetryPeriod:   c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
+			// 获取锁之后的回调
+			Callbacks: leaderelection.LeaderCallbacks{
+				// 获取成功，则触发 cm 的主要工作函数
+				OnStartedLeading: run,
+				// 获取失败回调
+				OnStoppedLeading: func() {
+					klog.Fatalf("leaderelection lost")
+				},
 			},
-		},
-		WatchDog: electionChecker,
-		Name:     "kube-controller-manager",
-	})
+			WatchDog: electionChecker,
+			Name:     "kube-controller-manager",
+		})
 	panic("unreachable")
 }
 
@@ -589,6 +613,7 @@ func (c serviceAccountTokenControllerStarter) startServiceAccountTokenController
 	go controller.Run(int(ctx.ComponentConfig.SAController.ConcurrentSATokenSyncs), ctx.Stop)
 
 	// start the first set of informers now so that other controllers can start
+	// 启动第一批informers
 	ctx.InformerFactory.Start(ctx.Stop)
 
 	return nil, true, nil

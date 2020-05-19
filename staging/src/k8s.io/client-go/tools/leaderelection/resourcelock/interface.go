@@ -35,6 +35,9 @@ const (
 	ConfigMapsLeasesResourceLock      = "configmapsleases"
 )
 
+// leader选举记录，这个锁信息，就是存在 K8s 的 ConfigMap 或者 Endpoint 里面的，当然，存哪里可能大家已经想到了，只能存 annotation 里面，该 annotation 的 key 就是 control-plane.alpha.kubernetes.io/leader
+// leader 会在 某个namespace(如kube-system下的同名 endpoint 的 annotations中写入key 值为LeaderElectionRecordAnnotationKey，value 为LeaderElectionRecord类型的记录，表明自己身份
+//  同时会根据 –leader-elect-renew-deadline 参数定期去更新记录中的 RenewTime 字段（续约，合同年限为 LeaseDurationSeconds）。
 // LeaderElectionRecord is the record that is stored in the leader election annotation.
 // This information should be used for observational purposes only and could be replaced
 // with a random string (e.g. UUID) with only slight modification of this code.
@@ -45,11 +48,16 @@ type LeaderElectionRecord struct {
 	// attempt to acquire leases with empty identities and will wait for the full lease
 	// interval to expire before attempting to reacquire. This value is set to empty when
 	// a client voluntarily steps down.
-	HolderIdentity       string      `json:"holderIdentity"`
-	LeaseDurationSeconds int         `json:"leaseDurationSeconds"`
-	AcquireTime          metav1.Time `json:"acquireTime"`
-	RenewTime            metav1.Time `json:"renewTime"`
-	LeaderTransitions    int         `json:"leaderTransitions"`
+	// leader 标识，通常为 hostname
+	HolderIdentity string `json:"holderIdentity"`
+	// leader合同年限，同启动参数 --leader-elect-lease-duration
+	LeaseDurationSeconds int `json:"leaseDurationSeconds"`
+	// Leader 第一次成功获得租约时的时间戳
+	AcquireTime metav1.Time `json:"acquireTime"`
+	// leader 定时 renew 的时间戳
+	RenewTime metav1.Time `json:"renewTime"`
+
+	LeaderTransitions int `json:"leaderTransitions"`
 }
 
 // EventRecorder records a change in the ResourceLock.
@@ -60,19 +68,24 @@ type EventRecorder interface {
 // ResourceLockConfig common data that exists across different
 // resource locks
 type ResourceLockConfig struct {
+	// 竞争者身份
 	// Identity is the unique string identifying a lease holder across
 	// all participants in an election.
 	Identity string
+	// 事件记录
 	// EventRecorder is optional.
 	EventRecorder EventRecorder
 }
 
+// leader选举接口
 // Interface offers a common interface for locking on arbitrary
 // resources used in leader election.  The Interface is used
 // to hide the details on specific implementations in order to allow
 // them to change over time.  This interface is strictly for use
 // by the leaderelection code.
 type Interface interface {
+
+	// 获取、创建、更新 annotations 中的选举记录；估计对大多数集群来说，只有第一次的时候才会调用 Create 创建这个对象
 	// Get returns the LeaderElectionRecord
 	Get(ctx context.Context) (*LeaderElectionRecord, []byte, error)
 
@@ -82,9 +95,11 @@ type Interface interface {
 	// Update will update and existing LeaderElectionRecord
 	Update(ctx context.Context, ler LeaderElectionRecord) error
 
+	// 这个 event 属于锁资源，里面会记录 leader 切换等事件
 	// RecordEvent is used to record events
 	RecordEvent(string)
 
+	// leader选主身份表示
 	// Identity will return the locks Identity
 	Identity() string
 
@@ -93,6 +108,7 @@ type Interface interface {
 	Describe() string
 }
 
+// 根据指定类型，初始化不同的资源锁
 // Manufacture will create a lock of a given type according to the input parameters
 func New(lockType string, ns string, name string, coreClient corev1.CoreV1Interface, coordinationClient coordinationv1.CoordinationV1Interface, rlc ResourceLockConfig) (Interface, error) {
 	endpointsLock := &EndpointsLock{

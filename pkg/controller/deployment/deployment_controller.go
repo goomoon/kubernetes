@@ -136,6 +136,7 @@ func NewDeploymentController(dInformer appsinformers.DeploymentInformer, rsInfor
 	dc.syncHandler = dc.syncDeployment
 	dc.enqueueDeployment = dc.enqueue
 
+	//获取基于informer.indexer(内部基于localStore)的，用于做Lister
 	dc.dLister = dInformer.Lister()
 	dc.rsLister = rsInformer.Lister()
 	dc.podLister = podInformer.Lister()

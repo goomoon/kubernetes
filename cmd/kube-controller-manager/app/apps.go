@@ -83,6 +83,8 @@ func startDeploymentController(ctx ControllerContext) (http.Handler, bool, error
 	if !ctx.AvailableResources[schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}] {
 		return nil, false, nil
 	}
+
+	//构造deploymentInformer、replicaSetInformer、podInformer 3个结构体，但此时并没有初始化出sharedInformer，只是包含了informerFactory
 	dc, err := deployment.NewDeploymentController(
 		ctx.InformerFactory.Apps().V1().Deployments(),
 		ctx.InformerFactory.Apps().V1().ReplicaSets(),

@@ -48,6 +48,7 @@ import (
 type KubeControllerManagerConfiguration struct {
 	metav1.TypeMeta
 
+	// 常规manager配置
 	// Generic holds configuration for a generic controller-manager
 	Generic GenericControllerManagerConfiguration
 	// KubeCloudSharedConfiguration holds configuration for shared related features
